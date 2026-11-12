@@ -25,6 +25,7 @@ import com.aistra.hail.utils.HFiles
 import com.aistra.hail.utils.HPackages
 import com.aistra.hail.utils.HPolicy
 import com.aistra.hail.utils.HUI
+import com.aistra.hail.utils.HUsers
 import com.aistra.hail.views.HRecyclerView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.Dispatchers
@@ -44,7 +45,7 @@ class AppsFragment : MainFragment(), AppsAdapter.OnItemClickListener, AppsAdapte
     // Prevent the same data from being filtered twice in `onCreateView`
     private var lastAppsHash: Int = 0
     private lateinit var lastQuery: String
-    private val isAppsChanged get() = model.apps.value.hashCode() != lastAppsHash
+    private val isAppsChanged get() = model.apps.value?.map { it.userId to it.packageName }.hashCode() != lastAppsHash
     private val isQueryChanged get() = model.query.value != lastQuery
     private var contextMenuInfo: ContextMenu.ContextMenuInfo? = null
 
@@ -103,10 +104,10 @@ class AppsFragment : MainFragment(), AppsAdapter.OnItemClickListener, AppsAdapte
             binding.refresh.isRefreshing = it
         }
         model.apps.apply {
-            lastAppsHash = value.hashCode()
+            lastAppsHash = value?.map { it.userId to it.packageName }.hashCode()
             observe(viewLifecycleOwner) {
                 if (isAppsChanged) updateDisplayAppList()
-                lastAppsHash = it.hashCode()
+                lastAppsHash = it.map { item -> item.userId to item.packageName }.hashCode()
             }
         }
         model.query.apply {
@@ -132,7 +133,7 @@ class AppsFragment : MainFragment(), AppsAdapter.OnItemClickListener, AppsAdapte
     ) {
         contextMenuInfo = menuInfo
         val viewHolder = ((menuInfo as HRecyclerView.RecyclerViewContextMenuInfo).viewHolder as AppsAdapter.ViewHolder)
-        menu.setHeaderTitle(viewHolder.info.loadLabel(activity.packageManager))
+        menu.setHeaderTitle(viewHolder.item.applicationInfo.loadLabel(activity.packageManager))
         activity.menuInflater.inflate(R.menu.menu_apps_action, menu)
         super.onCreateContextMenu(menu, v, menuInfo)
     }
@@ -140,9 +141,19 @@ class AppsFragment : MainFragment(), AppsAdapter.OnItemClickListener, AppsAdapte
     override fun onContextItemSelected(item: MenuItem): Boolean {
         val viewHolder =
             ((contextMenuInfo as HRecyclerView.RecyclerViewContextMenuInfo).viewHolder as AppsAdapter.ViewHolder)
-        val info = viewHolder.info
+        val appItem = viewHolder.item
+        val info = appItem.applicationInfo
         val name = info.loadLabel(app.packageManager)
         val pkg = info.packageName
+        val userId = appItem.userId
+        // Details, uninstall and APK extraction only work for the current profile
+        if (!appItem.isCurrentUser && item.itemId in arrayOf(
+                R.id.action_details, R.id.action_uninstall, R.id.action_reinstall, R.id.action_extract_apk
+            )
+        ) {
+            HUI.showToast(R.string.msg_profile_operation_unavailable)
+            return true
+        }
         when (item.itemId) {
             R.id.action_details -> HUI.startActivity(
                 Settings.ACTION_APPLICATION_DETAILS_SETTINGS, HPackages.packageUri(pkg)
@@ -196,11 +207,11 @@ class AppsFragment : MainFragment(), AppsAdapter.OnItemClickListener, AppsAdapte
     }
 
     override fun onItemCheckedChange(
-        buttonView: CompoundButton, isChecked: Boolean, packageName: String
+        buttonView: CompoundButton, isChecked: Boolean, userId: Int, packageName: String
     ) {
-        if (isChecked) HailData.addCheckedApp(packageName)
-        else HailData.removeCheckedApp(packageName)
-        buttonView.isChecked = HailData.isChecked(packageName)
+        if (isChecked) HailData.addCheckedApp(userId, packageName)
+        else HailData.removeCheckedApp(userId, packageName)
+        buttonView.isChecked = HailData.isChecked(userId, packageName)
     }
 
     override fun onCreateMenu(menu: Menu, inflater: MenuInflater) {

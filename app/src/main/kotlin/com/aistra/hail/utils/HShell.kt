@@ -9,6 +9,13 @@ object HShell {
     private val userArg: String
         get() = "--user ${getCurrentUserId()}"
 
+    /** `--user` argument of a shell command, omitted for the current user. */
+    private fun userArg(userId: Int): String =
+        if (userId == getCurrentUserId()) "" else "--user $userId"
+
+    /** Joins the command parts and drops the empty ones. */
+    private fun command(vararg parts: String) = parts.filter { it.isNotEmpty() }.joinToString(" ")
+
     fun execute(command: String, root: Boolean): Pair<Int, String?> = runCatching {
         ProcessBuilder(if (root) "su" else "sh").redirectErrorStream(true).start().run {
             outputStream.use { it.write(command.toByteArray()) }
@@ -22,16 +29,17 @@ object HShell {
 
     val lockScreen get() = execSU("input keyevent KEYCODE_POWER").first == 0
 
-    fun forceStopApp(packageName: String): Boolean = execSU("am force-stop $userArg $packageName").first == 0
+    fun forceStopApp(packageName: String, userId: Int = HPackages.myUserId): Boolean =
+        execSU(command("am force-stop", userArg(userId), packageName)).first == 0
 
-    fun setAppDisabled(packageName: String, disabled: Boolean): Boolean =
-        execSU("pm ${if (disabled) "disable" else "enable"} $userArg $packageName").first == 0
+    fun setAppDisabled(packageName: String, disabled: Boolean, userId: Int = HPackages.myUserId): Boolean =
+        execSU(command("pm ${if (disabled) "disable" else "enable"}", userArg(userId), packageName)).first == 0
 
-    fun setAppHidden(packageName: String, hidden: Boolean): Boolean =
-        execSU("pm ${if (hidden) "hide" else "unhide"} $userArg $packageName").first == 0
+    fun setAppHidden(packageName: String, hidden: Boolean, userId: Int = HPackages.myUserId): Boolean =
+        execSU(command("pm ${if (hidden) "hide" else "unhide"}", userArg(userId), packageName)).first == 0
 
-    fun setAppSuspended(packageName: String, suspended: Boolean): Boolean =
-        execSU("pm ${if (suspended) "suspend" else "unsuspend"} $userArg $packageName").first == 0
+    fun setAppSuspended(packageName: String, suspended: Boolean, userId: Int = HPackages.myUserId): Boolean =
+        execSU(command("pm ${if (suspended) "suspend" else "unsuspend"}", userArg(userId), packageName)).first == 0
 
     fun uninstallApp(packageName: String) = execSU(
         "pm ${if (HPackages.canUninstallNormally(packageName)) "uninstall" else "uninstall $userArg"} $packageName"

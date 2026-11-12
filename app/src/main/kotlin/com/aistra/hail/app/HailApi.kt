@@ -2,8 +2,12 @@ package com.aistra.hail.app
 
 import android.content.Intent
 import com.aistra.hail.BuildConfig
+import com.aistra.hail.utils.HPackages
 
 object HailApi {
+    /** App is launched in this profile, defaults to the current user. */
+    const val EXTRA_USER = HailData.KEY_USER
+
     /** @since 0.5.0 */
     const val ACTION_LAUNCH = "${BuildConfig.APPLICATION_ID}.action.LAUNCH"
 
@@ -38,8 +42,12 @@ object HailApi {
     /** @since 0.6.0 */
     const val ACTION_LOCK_FREEZE = "${BuildConfig.APPLICATION_ID}.action.LOCK_FREEZE"
 
-    fun getIntentForPackage(action: String, packageName: String) =
-        Intent(action).putExtra(HailData.KEY_PACKAGE, packageName)
+    fun getIntentForPackage(
+        action: String, packageName: String, userId: Int = HPackages.myUserId
+    ) = Intent(action).putExtra(HailData.KEY_PACKAGE, packageName).apply {
+        // A string keeps the extra readable next to the scheme parameter of the same name
+        if (userId != HPackages.myUserId) putExtra(EXTRA_USER, userId.toString())
+    }
 
     fun Intent.addTag(tag: String) = putExtra(HailData.KEY_TAG, tag)
 

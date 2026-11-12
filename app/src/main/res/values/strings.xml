@@ -123,6 +123,11 @@
     <string name="skip_notifying_app">Skip notifying app</string>
     <string name="auto_freeze_delay">Freeze delay (minutes)</string>
     <string name="title_shortcuts">Shortcuts</string>
+    <string name="profiles">Profiles</string>
+    <string name="show_other_profiles">Show apps of other profiles</string>
+    <string name="msg_profile_operation_unavailable">This operation is only available for the current profile</string>
+    <string name="msg_profile_launch_unavailable">Switch to another profile to open this app</string>
+    <string name="msg_profile_quiet_mode">This profile is paused, enable it first</string>
     <string name="msg_guide">Before freezing applications, please select a working mode in the settings.</string>
     <string name="dynamic_shortcut_action">Dynamic shortcut action</string>
     <string name="action_none">None</string>

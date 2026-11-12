@@ -11,11 +11,17 @@ import com.aistra.hail.app.HailData
 import com.aistra.hail.utils.*
 import kotlinx.coroutines.*
 
+/** An installed app together with the profile it belongs to. */
+data class AppListItem(val userId: Int, val applicationInfo: ApplicationInfo) {
+    val packageName get() = applicationInfo.packageName
+    val isCurrentUser get() = userId == HPackages.myUserId
+}
+
 class AppsViewModel(application: Application) : AndroidViewModel(application) {
-    val apps = MutableLiveData<List<ApplicationInfo>>()
+    val apps = MutableLiveData<List<AppListItem>>()
     val isRefreshing = MutableLiveData(false)
     val query = MutableLiveData("")
-    val displayApps = MutableLiveData<List<ApplicationInfo>>()
+    val displayApps = MutableLiveData<List<AppListItem>>()
 
     init {
         updateAppList()
@@ -58,8 +64,27 @@ class AppsViewModel(application: Application) : AndroidViewModel(application) {
     fun updateAppList() {
         viewModelScope.launch {
             postRefreshState(true)
-            apps.postValue(HPackages.getInstalledApplications())
+            apps.postValue(loadApps())
         }
+    }
+
+    /**
+     * Load the apps of the current profile, plus the other profiles when enabled.
+     *
+     * The current profile uses `PackageManager`, every other profile uses `LauncherApps`.
+     * A profile that cannot be queried is skipped instead of hiding the others.
+     */
+    private suspend fun loadApps(): List<AppListItem> = withContext(Dispatchers.IO) {
+        val current = HPackages.getInstalledApplications()
+            .map { AppListItem(HPackages.myUserId, it) }
+        if (!HailData.showOtherProfiles || !HUsers.canListOtherProfiles) return@withContext current
+        val others = HUsers.getOtherProfiles().map { profile ->
+            async {
+                HShizuku.getLauncherActivities(profile.id)
+                    .map { AppListItem(profile.id, it) }
+            }
+        }.awaitAll().flatten()
+        current + others
     }
 
     /**
@@ -81,38 +106,43 @@ class AppsViewModel(application: Application) : AndroidViewModel(application) {
 
     private val ApplicationInfo.isSystemApp: Boolean
         get() = flags and ApplicationInfo.FLAG_SYSTEM == ApplicationInfo.FLAG_SYSTEM
-    private val ApplicationInfo.isAppFrozen get() = AppManager.isAppFrozen(packageName)
 
     private suspend fun filterList(
-        appList: List<ApplicationInfo>,
+        appList: List<AppListItem>,
         query: String?
-    ): List<ApplicationInfo> {
+    ): List<AppListItem> {
         val pm = getApplication<HailApp>().packageManager
+        val myUserId = HPackages.myUserId
         return withContext(Dispatchers.Default) {
             return@withContext appList.filter {
-                ((HailData.filterUserApps && !it.isSystemApp)
-                        || (HailData.filterSystemApps && it.isSystemApp))
+                val info = it.applicationInfo
+                ((HailData.filterUserApps && !info.isSystemApp)
+                        || (HailData.filterSystemApps && info.isSystemApp))
 
-                        && ((HailData.filterFrozenApps && it.isAppFrozen)
-                        || (HailData.filterUnfrozenApps && !it.isAppFrozen))
+                        && ((HailData.filterFrozenApps && AppManager.isAppFrozen(it.userId, it.packageName))
+                        || (HailData.filterUnfrozenApps && !AppManager.isAppFrozen(it.userId, it.packageName)))
                         // Search apps
                         && ((HailData.nineKeySearch
-                        && (NineKeySearch.search(query, it.packageName, it.loadLabel(pm).toString())))
-                        || FuzzySearch.search(it.packageName, query)
-                        || FuzzySearch.search(it.loadLabel(pm).toString(), query)
-                        || PinyinSearch.searchPinyinAll(it.loadLabel(pm).toString(), query))
+                        && (NineKeySearch.search(query, info.packageName, info.loadLabel(pm).toString())))
+                        || FuzzySearch.search(info.packageName, query)
+                        || FuzzySearch.search(info.loadLabel(pm).toString(), query)
+                        || PinyinSearch.searchPinyinAll(info.loadLabel(pm).toString(), query))
             }.run {
                 when (HailData.sortBy) {
+                    // Install/update times are only available for the current profile
                     HailData.SORT_INSTALL -> sortedBy {
-                        HPackages.getUnhiddenPackageInfoOrNull(it.packageName)
-                            ?.firstInstallTime ?: 0
+                        if (it.userId != myUserId) 0L
+                        else HPackages.getUnhiddenPackageInfoOrNull(it.packageName)?.firstInstallTime ?: 0
                     }
 
                     HailData.SORT_UPDATE -> sortedByDescending {
-                        HPackages.getUnhiddenPackageInfoOrNull(it.packageName)?.lastUpdateTime ?: 0
+                        if (it.userId != myUserId) 0L
+                        else HPackages.getUnhiddenPackageInfoOrNull(it.packageName)?.lastUpdateTime ?: 0
                     }
 
-                    else -> sortedWith(NameComparator)
+                    else -> sortedWith(Comparator { a, b ->
+                        NameComparator.compare(a.applicationInfo, b.applicationInfo)
+                    })
                 }
             }
         }

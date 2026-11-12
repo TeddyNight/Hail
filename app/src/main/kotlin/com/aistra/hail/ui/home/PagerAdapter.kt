@@ -13,12 +13,13 @@ import com.aistra.hail.R
 import com.aistra.hail.app.AppInfo
 import com.aistra.hail.app.HailData
 import com.aistra.hail.utils.AppIconCache
-import com.aistra.hail.utils.HPackages.myUserId
 import com.google.android.material.color.MaterialColors
 import kotlinx.coroutines.Job
 
 class PagerAdapter(
     private val selectedList: List<AppInfo>,
+    // Keyed by `AppInfo.toString()`, i.e. the user id and the package name: the same package in
+    // two profiles is two different apps and needs two different entries here
     private val flags: MutableMap<String, Int> = mutableMapOf()
 ) : ListAdapter<AppInfo, PagerAdapter.ViewHolder>(HomeDiff(selectedList, flags)) {
     private var loadIconJob: Job? = null
@@ -31,7 +32,7 @@ class PagerAdapter(
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val info = currentList[position]
-        flags[info.packageName] = info.getFlag(selectedList)
+        flags[info.toString()] = info.getFlag(selectedList)
         holder.itemView.run {
             setOnClickListener { onItemClickListener.onItemClick(info) }
             setOnLongClickListener { onItemLongClickListener.onItemLongClick(info) }
@@ -40,7 +41,7 @@ class PagerAdapter(
                     loadIconJob = AppIconCache.loadIconBitmapAsync(
                         context,
                         it,
-                        myUserId,
+                        info.userId,
                         this,
                         HailData.grayscaleIcon && info.state == AppInfo.State.FROZEN
                     )
@@ -82,7 +83,7 @@ class PagerAdapter(
         override fun areItemsTheSame(oldItem: AppInfo, newItem: AppInfo): Boolean = oldItem == newItem
 
         override fun areContentsTheSame(oldItem: AppInfo, newItem: AppInfo): Boolean =
-            flags[oldItem.packageName] == newItem.getFlag(selectedList)
+            flags[oldItem.toString()] == newItem.getFlag(selectedList)
     }
 
     class ViewHolder(view: View) : RecyclerView.ViewHolder(view)

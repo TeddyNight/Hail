@@ -10,6 +10,7 @@ import android.service.quicksettings.TileService
 import androidx.annotation.RequiresApi
 import com.aistra.hail.HailApp.Companion.app
 import com.aistra.hail.R
+import com.aistra.hail.app.AppManager
 import com.aistra.hail.app.HailApi
 import com.aistra.hail.app.HailData
 import com.aistra.hail.utils.HTarget

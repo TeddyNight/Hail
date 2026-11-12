@@ -85,7 +85,12 @@ object AppIconCache : CoroutineScope {
             loader = AppIconLoader(size, shrinkNonAdaptiveIcons, context)
             appIconLoaders[size] = loader
         }
-        val bitmap = IconPack.loadIcon(info.packageName) ?: loader.loadIcon(info, false)
+        // A profile listed through the shell fallback has no source dir, look the app up in its own
+        // profile: defaulting to the current one would show the icon of this profile's app
+        val iconInfo = if (info.sourceDir.isNullOrEmpty())
+            HPackages.getApplicationInfoOrNull(info.packageName, userId) ?: info
+        else info
+        val bitmap = IconPack.loadIcon(info.packageName) ?: loader.loadIcon(iconInfo, false)
         put(info.packageName, userId, size, bitmap)
         return bitmap
     }

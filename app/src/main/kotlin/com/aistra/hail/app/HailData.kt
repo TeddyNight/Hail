@@ -6,6 +6,7 @@ import com.aistra.hail.BuildConfig
 import com.aistra.hail.HailApp.Companion.app
 import com.aistra.hail.R
 import com.aistra.hail.utils.HFiles
+import com.aistra.hail.utils.HPackages
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -31,6 +32,7 @@ object HailData {
     private const val KEY_WHITELISTED = "whitelisted"
     const val KEY_PACKAGE = "package"
     const val KEY_FROZEN = "frozen"
+    const val KEY_USER = "user"
     private const val SORT_BY = "sort_by"
     const val SORT_NAME = "name"
     const val SORT_INSTALL = "install"
@@ -123,6 +125,7 @@ object HailData {
     const val SKIP_WHILE_CHARGING = "skip_while_charging"
     const val SKIP_FOREGROUND_APP = "skip_foreground_app"
     const val SKIP_NOTIFYING_APP = "skip_notifying_app"
+    const val SHOW_OTHER_PROFILES = "show_other_profiles"
     const val DYNAMIC_SHORTCUT_ACTION = "dynamic_shortcut_action"
     val DYNAMIC_SHORTCUT_ACTIONS = listOf(
         ACTION_NONE,
@@ -158,6 +161,7 @@ object HailData {
     val skipForegroundApp get() = sp.getBoolean(SKIP_FOREGROUND_APP, false)
     val skipNotifyingApp get() = sp.getBoolean(SKIP_NOTIFYING_APP, false)
     val dynamicShortcutAction get() = sp.getString(DYNAMIC_SHORTCUT_ACTION, ACTION_NONE)!!
+    val showOtherProfiles get() = sp.getBoolean(SHOW_OTHER_PROFILES, false)
 
     private val dir = "${app.filesDir.path}/v1"
     private val appsPath = "$dir/apps.json"
@@ -170,6 +174,8 @@ object HailData {
                 for (i in 0 until json.length()) {
                     add(with(json.getJSONObject(i)) {
                         AppInfo(
+                            // Entries created before multi-profile support have no user field
+                            userId = optInt(KEY_USER, HPackages.myUserId),
                             packageName = getString(KEY_PACKAGE),
                             pinned = optBoolean(KEY_PINNED),
                             whitelisted = optBoolean(KEY_WHITELISTED),
@@ -183,15 +189,33 @@ object HailData {
         }
     }
 
-    fun isChecked(packageName: String): Boolean = checkedList.any { it.packageName == packageName }
+    /** The checked apps that belong to the current profile. */
+    val checkedListForCurrentUser: List<AppInfo>
+        get() = checkedList.filter { it.userId == HPackages.myUserId }
 
-    fun addCheckedApp(packageName: String, tagId: Int = 0, saveApps: Boolean = true) {
-        checkedList.add(AppInfo(packageName, tagIdList = mutableListOf(tagId)))
+    fun checkedListForUser(userId: Int): List<AppInfo> = checkedList.filter { it.userId == userId }
+
+    /** Identity string of an app inside a profile, only used to derive keys. */
+    fun profileKey(userId: Int, packageName: String) = "$userId:$packageName"
+
+    fun isChecked(packageName: String): Boolean = isChecked(HPackages.myUserId, packageName)
+
+    fun isChecked(userId: Int, packageName: String): Boolean =
+        checkedList.any { it.userId == userId && it.packageName == packageName }
+
+    fun addCheckedApp(packageName: String, tagId: Int = 0, saveApps: Boolean = true) =
+        addCheckedApp(HPackages.myUserId, packageName, tagId, saveApps)
+
+    fun addCheckedApp(userId: Int, packageName: String, tagId: Int = 0, saveApps: Boolean = true) {
+        checkedList.add(AppInfo(userId, packageName, tagIdList = mutableListOf(tagId)))
         if (saveApps) saveApps()
     }
 
-    fun removeCheckedApp(packageName: String, saveApps: Boolean = true) {
-        checkedList.removeAll { it.packageName == packageName }
+    fun removeCheckedApp(packageName: String, saveApps: Boolean = true) =
+        removeCheckedApp(HPackages.myUserId, packageName, saveApps)
+
+    fun removeCheckedApp(userId: Int, packageName: String, saveApps: Boolean = true) {
+        checkedList.removeAll { it.userId == userId && it.packageName == packageName }
         if (saveApps) saveApps()
     }
 
@@ -202,6 +226,7 @@ object HailData {
                 put(
                     JSONObject()
                         .put(KEY_PACKAGE, it.packageName)
+                        .put(KEY_USER, it.userId)
                         .put(KEY_PINNED, it.pinned)
                         .put(KEY_WHITELISTED, it.whitelisted)
                         .put(KEY_TAGS, JSONArray(it.tagIdList))
@@ -209,6 +234,15 @@ object HailData {
             }
             toString()
         })
+    }
+
+    /**
+     * Drop entries whose profile no longer exists, e.g. a work profile that was removed.
+     * Entries of profiles we cannot enumerate are kept.
+     */
+    fun pruneUnknownUsers(knownUserIds: Set<Int>) {
+        val removed = checkedList.removeAll { it.userId !in knownUserIds }
+        if (removed) saveApps()
     }
 
     val tags: MutableList<Pair<String, Int>> by lazy {

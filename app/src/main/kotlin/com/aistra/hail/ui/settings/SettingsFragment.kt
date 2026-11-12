@@ -237,6 +237,15 @@ class SettingsFragment : MainFragment(), MenuProvider {
                 enabled = autoFreezeAfterLock.value,
                 icon = Icons.Outlined.NotificationsActive
             )
+            // Listing apps of other profiles works in every mode, freezing them needs shell/root
+            horizontalDivider()
+            preferenceCategory(key = "profiles", title = { Text(text = stringResource(R.string.profiles)) })
+            switchPreference(
+                key = HailData.SHOW_OTHER_PROFILES,
+                defaultValue = false,
+                titleId = R.string.show_other_profiles,
+                icon = Icons.Outlined.SwitchAccount
+            )
             horizontalDivider()
             preferenceCategory(key = "shortcuts", title = { Text(text = stringResource(R.string.title_shortcuts)) })
             preference(
@@ -432,6 +441,8 @@ class SettingsFragment : MainFragment(), MenuProvider {
     fun onWorkingModeChange(rememberState: MutableState<String>, mode: String): Boolean {
         // Show/hide terminal menu.
         activity.invalidateOptionsMenu()
+        // Profiles reachable by the working mode may differ, re-enumerate them next time.
+        HUsers.clearCache()
         when {
             mode.startsWith(HailData.OWNER) -> if (!HPolicy.isDeviceOwnerActive) {
                 MaterialAlertDialogBuilder(requireActivity()).setTitle(R.string.title_set_owner)

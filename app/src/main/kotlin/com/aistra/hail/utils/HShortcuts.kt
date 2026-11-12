@@ -48,18 +48,30 @@ object HShortcuts {
         )
     }
 
-    fun addDynamicShortcut(packageName: String) {
+    fun addDynamicShortcut(packageName: String) = addDynamicShortcut(HPackages.myUserId, packageName)
+
+    /**
+     * Publish the dynamic shortcut of an app.
+     *
+     * Label and icon are the ones of the app in that profile. Only the id carries the profile,
+     * so the entries of two profiles do not replace each other; the label stays the plain app
+     * name, the launcher already shows one shortcut per profile side by side.
+     */
+    fun addDynamicShortcut(userId: Int, packageName: String) {
         if (HailData.biometricLogin) return
-        val applicationInfo = HPackages.getApplicationInfoOrNull(packageName)
+        val applicationInfo = HPackages.getApplicationInfoOrNull(packageName, userId)
+        val id = if (userId == HPackages.myUserId) packageName.hashCode()
+        else HailData.profileKey(userId, packageName).hashCode()
+        val label = applicationInfo?.loadLabel(app.packageManager)?.toString() ?: packageName
         val shortcut =
-            ShortcutInfoCompat.Builder(app, packageName.hashCode().toString()) // Make id different from pin
+            ShortcutInfoCompat.Builder(app, id.toString()) // Make id different from pin
                 .setIcon(IconCompat.createWithBitmap(applicationInfo?.let {
                     IconPack.loadIcon(it.packageName) ?: iconLoader.loadIcon(it)
                 } ?: getBitmapFromDrawable(
                     app.packageManager.defaultActivityIcon
-                ))).setShortLabel(
-                    applicationInfo?.loadLabel(app.packageManager) ?: packageName
-                ).setIntent(HailApi.getIntentForPackage(HailApi.ACTION_LAUNCH, packageName)).build()
+                ))).setShortLabel(label)
+                .setLongLabel(label)
+                .setIntent(HailApi.getIntentForPackage(HailApi.ACTION_LAUNCH, packageName, userId)).build()
         ShortcutManagerCompat.pushDynamicShortcut(app, shortcut)
         addDynamicShortcutAction(HailData.dynamicShortcutAction)
     }
