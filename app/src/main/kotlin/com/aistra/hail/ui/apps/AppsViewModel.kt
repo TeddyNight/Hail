@@ -36,8 +36,9 @@ class AppsViewModel(application: Application) : AndroidViewModel(application) {
     private fun postRefreshState(state: Boolean, delayTime: Long = 200L) {
         if (!state) {
             refreshStateJob?.cancel()
+            refreshStateJob = null
             isRefreshing.postValue(false)
-        } else if (refreshStateJob == null || refreshStateJob!!.isCompleted) {
+        } else if (refreshStateJob == null) {
             refreshStateJob = viewModelScope.launch {
                 delay(delayTime)
                 isRefreshing.postValue(true)
@@ -64,7 +65,12 @@ class AppsViewModel(application: Application) : AndroidViewModel(application) {
     fun updateAppList() {
         viewModelScope.launch {
             postRefreshState(true)
-            apps.postValue(loadApps())
+            try {
+                apps.postValue(loadApps())
+            } finally {
+                // Always end the spinner, a failure must not leave it turning forever
+                postRefreshState(false)
+            }
         }
     }
 
@@ -96,9 +102,9 @@ class AppsViewModel(application: Application) : AndroidViewModel(application) {
     fun updateDisplayAppList() {
         apps.value?.let {
             viewModelScope.launch {
-                postRefreshState(true)
+                // Filtering and sorting are in memory, too quick to show a spinner: asking for
+                // one here and cancelling it right away left the pull-to-refresh spinner turning
                 displayApps.postValue(filterList(it, query.value))
-                postRefreshState(false)
             }
         }
     }
